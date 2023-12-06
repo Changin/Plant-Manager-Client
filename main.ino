@@ -44,19 +44,20 @@ float getTemp();  // (return Temp)
 float getHumi();  // (return Humidity)
 int getWatery();  // (return Soil watery)
 bool cameraInit();  // Initialize camera
-void snapShot();    // Take pic
+void snapShot();    // Take pic & send data to server
+void measure();     // measure data & send to server
 void printWifiStatus(); // Print Wifi Status
 String getSerialNum();  // get serial number
-void reset();      // reboot arduino
+// void reset();      // reboot arduino
+void(* reset) (void) = 0;
 
 
 
 // -------------------Global Variables---------------
 int TIMELAPSE_PERIOD = 12;      // 타임랩스 촬영주기 : 디폴트값 12
-unsigned long interval = 3600000;           // 측정 주기 : 1시간
+const unsigned long interval = 3600000;           // 측정 주기 : 1시간
 unsigned long l1 = 0;           // 센서값 측정 타이밍
 unsigned long l3 = 0;           // 타임랩스 촬영 타이밍
-const int resetPin = 8;         // 오류 발생시 리셋 연결된 핀
 
 
 
@@ -65,9 +66,10 @@ void setup() {
   // 0. Serial for debug
   Serial.begin(115200);
 
-  // 1. Initialize Sensors
+  // 1. Initialize Sensors & Global Variables
   dht.begin();          // dht 시작
-  pinMode(resetPin, OUTPUT);
+  l1 = 0;
+  l3 = 0;
 
   // 2. Connect WiFi
   Serial1.begin(9600);  // initialize serial for ESP module
@@ -87,7 +89,7 @@ void setup() {
   // printWifiStatus();
   // Serial.println();
 
-  // Serial.println(getSerialNum());
+  Serial.println(getSerialNum());
 
   // 3. Conncet to Server, POST api/join/ & setup TIMELAPSE_PERIOD
   RingBuffer ringbuf(8);
@@ -134,6 +136,11 @@ void setup() {
       }
     }
   }
+  // measure sensors, and send to server
+  measure();
+  delay(5000);
+  // take pic, and send to server
+  snapShot();
 }
 
 
@@ -150,28 +157,7 @@ void loop() {
   // measure sensor & send data to server (api/measure/)
   unsigned long l2 = millis();
   if (l2-l1 >= interval){
-    client.flush();
-    client.stop();
-    String context = "{\"plant_id\": \""+getSerialNum()+"\",\"light\": \""+String(getLight())+"\","+
-    //String context = "{\"plant_id\": \"testSerial1\", \"light\": \""+String(getLight())+"\","+
-                      "\"temp\": \""+String(getTemp())+"\","+
-                      "\"humi\": \""+String(getHumi())+"\","+
-                      "\"watery\": \""+String(getWatery())+"\",\"ph\": \"7.3\"}";
-    // API measure
-    if (client.connect(server, 8080)) {
-      client.println("POST /api/measure/ HTTP/1.1");
-      client.println("Host: "+String(server)+":8080");
-      client.println("Accept: */*");
-
-      client.println("Content-Length: " + String(context.length()));
-      client.println("Content-Type: application/json");
-      client.println();
-      client.println(context);
-      // client.println("POST /api/join/ HTTP/1.1\nHost: 192.168.123.103:8080\nAccept: */*\nContent-Length: "+String(content.length())+"\nContent-Type: application/json\n\n"+content);
-
-      delay(500);
-      client.flush();
-    }
+    measure();
     l1 = l2;
   }
 
@@ -330,7 +316,36 @@ void snapShot(){
 
   // Serial.println();
   // Serial.println("Done!");
+  client.flush();
+  client.stop();
   cam.resumeVideo();
+}
+
+
+void measure(){ // 센서 측정 & 서버로 전송
+  client.flush();
+  client.stop();
+  String context = "{\"plant_id\": \""+getSerialNum()+"\",\"light\": \""+String(getLight())+"\","+
+  //String context = "{\"plant_id\": \"testSerial1\", \"light\": \""+String(getLight())+"\","+
+                    "\"temp\": \""+String(getTemp())+"\","+
+                    "\"humi\": \""+String(getHumi())+"\","+
+                    "\"watery\": \""+String(getWatery())+"\",\"ph\": \"7.3\"}";
+  // API measure
+  if (client.connect(server, 8080)) {
+    client.println("POST /api/measure/ HTTP/1.1");
+    client.println("Host: "+String(server)+":8080");
+    client.println("Accept: */*");
+
+    client.println("Content-Length: " + String(context.length()));
+    client.println("Content-Type: application/json");
+    client.println();
+    client.println(context);
+    // client.println("POST /api/join/ HTTP/1.1\nHost: 192.168.123.103:8080\nAccept: */*\nContent-Length: "+String(content.length())+"\nContent-Type: application/json\n\n"+content);
+
+    delay(500);
+    client.flush();
+    client.stop();
+  }
 }
 
 
@@ -361,10 +376,4 @@ String getSerialNum(){
     serialNum += String(buf);
   }
   return serialNum;
-}
-
-void reset(){
-  digitalWrite(resetPin, HIGH);
-  delay(1000);
-  digitalWrite(resetPin, LOW);
 }
