@@ -47,6 +47,7 @@ bool cameraInit();  // Initialize camera
 void snapShot();    // Take pic
 void printWifiStatus(); // Print Wifi Status
 String getSerialNum();  // get serial number
+void reset();      // reboot arduino
 
 
 
@@ -55,6 +56,7 @@ int TIMELAPSE_PERIOD = 12;      // 타임랩스 촬영주기 : 디폴트값 12
 unsigned long interval = 3600000;           // 측정 주기 : 1시간
 unsigned long l1 = 0;           // 센서값 측정 타이밍
 unsigned long l3 = 0;           // 타임랩스 촬영 타이밍
+const int resetPin = 8;         // 오류 발생시 리셋 연결된 핀
 
 
 
@@ -65,6 +67,7 @@ void setup() {
 
   // 1. Initialize Sensors
   dht.begin();          // dht 시작
+  pinMode(resetPin, OUTPUT);
 
   // 2. Connect WiFi
   Serial1.begin(9600);  // initialize serial for ESP module
@@ -75,16 +78,16 @@ void setup() {
     while (true);
   }
   while ( status != WL_CONNECTED) {
-    Serial.print("connect to WPA SSID: ");
-    Serial.println(ssid);
+    // Serial.print("connect to WPA SSID: ");
+    // Serial.println(ssid);
     // Connect to WPA/WPA2 network
     status = WiFi.begin(ssid, pass);
   }
-  Serial.println("connected");
-  printWifiStatus();
-  Serial.println();
+  // Serial.println("connected");
+  // printWifiStatus();
+  // Serial.println();
 
-  Serial.println(getSerialNum());
+  // Serial.println(getSerialNum());
 
   // 3. Conncet to Server, POST api/join/ & setup TIMELAPSE_PERIOD
   RingBuffer ringbuf(8);
@@ -108,7 +111,7 @@ void setup() {
       client.println(content);
       // client.println("POST /api/join/ HTTP/1.1\nHost: 192.168.123.103:8080\nAccept: */*\nContent-Length: "+String(content.length())+"\nContent-Type: application/json\n\n"+content);
 
-      // Parse JSON -> TIMELAPSE_PERIOD
+      // Parse JSON -> set TIMELAPSE_PERIOD
       delay(100);
       while(client.connected()){
         if(client.available()){
@@ -123,8 +126,8 @@ void setup() {
             } while(!ringbuf.endsWith("}"));
 
             TIMELAPSE_PERIOD = period.toInt();
-            Serial.print("period: ");
-            Serial.println(TIMELAPSE_PERIOD);
+            // Serial.print("period: ");
+            // Serial.println(TIMELAPSE_PERIOD);
             suc = true;
           }
         }
@@ -137,10 +140,11 @@ void setup() {
 
 // ***********************LOOP******************************
 void loop() {
+  /*
   while (client.available()) {
     char c = client.read();
     Serial.write(c);
-  }
+  }*/
 
   // measure period : 1h
   // measure sensor & send data to server (api/measure/)
@@ -165,9 +169,10 @@ void loop() {
       client.println(context);
       // client.println("POST /api/join/ HTTP/1.1\nHost: 192.168.123.103:8080\nAccept: */*\nContent-Length: "+String(content.length())+"\nContent-Type: application/json\n\n"+content);
 
-      delay(50);
+      delay(500);
+      client.flush();
     }
-    l1 = millis();
+    l1 = l2;
   }
 
   // timelapse period : TIMELAPSE_PERIOD
@@ -208,10 +213,11 @@ bool cameraInit(){  // Initialize Camera module
     return false;
   }
   else {
+    /*
     Serial.println("version:");
     Serial.println("-----------------");
     Serial.println(reply);
-    Serial.println("-----------------");
+    Serial.println("-----------------");*/
     return true;
   }
 }
@@ -220,26 +226,28 @@ bool cameraInit(){  // Initialize Camera module
 void snapShot(){
   // 카메라 모듈 초기화
   while(false == cameraInit()){
-    Serial.println("camera init error...");
-    Serial.println("retry in 3 sec...");
+    // Serial.println("camera init error...");
+    // Serial.println("retry in 3 sec...");
     delay(3000);
   }
-  Serial.println("camera Init...OK");
+  // Serial.println("camera Init...OK");
 
   cam.resumeVideo();
   cam.setImageSize(VC0706_640x480);
-  Serial.println("Snap in 1 sec");
+  // Serial.println("Snap in 1 sec");
   delay(1000);
   if (! cam.takePicture()){
     Serial.println("Failed to snap!");
+    reset();
   }
   else{
-    Serial.println("Picture taken!");
+    // Serial.println("Picture taken!");
   }
   uint16_t jpglen = cam.getFrameLength();   // size of jpg
+  /* print img size
   Serial.print("img size: ");
   Serial.print(jpglen, DEC);
-  Serial.println(" byte");
+  Serial.println(" byte");*/
   cam.getPicture(jpglen);
   uint8_t *buffer;  // 0~255 1byte unsigned int 
 
@@ -251,16 +259,16 @@ void snapShot(){
   Serial1.begin(9600);
   WiFi.init(&Serial1);  // initialize ESP module
   if (WiFi.status() == WL_NO_SHIELD) {
-    Serial.println("WiFi shield not present");
-    // don't continue
-    while (true);
+    // Serial.println("WiFi shield not present");
+    // reboot system
+    reset();
   }
   while (status != WL_CONNECTED) {
-    Serial.print("connect to WPA SSID: ");
-    Serial.println(ssid);
+    // Serial.print("connect to WPA SSID: ");
+    // Serial.println(ssid);
     status = WiFi.begin(ssid, pass);
   }
-  Serial.println("connected");
+  // Serial.println("connected");
 
   // 사진 읽어서 전송
   RingBuffer ringbuf(8);
@@ -285,8 +293,9 @@ void snapShot(){
 
     // api/uploadimages 전송 부분
     Serial1.listen();
-    Serial.println(contextBuf);
+    // Serial.println(contextBuf);
     int success = 0;
+    int try_count = 0;
     while(success != 1){  // 전송 실패하면 다시 보내기
       client.flush();
       client.stop();
@@ -309,13 +318,18 @@ void snapShot(){
 
         success = 1;
       }
+      try_count++;
+      if (try_count>30){
+        // Critical Error! -> Reboot System
+        reset();
+      }
     }
     jpglen -= bytesToRead;
     count++;
   }
 
-  Serial.println();
-  Serial.println("Done!");
+  // Serial.println();
+  // Serial.println("Done!");
   cam.resumeVideo();
 }
 
@@ -347,4 +361,10 @@ String getSerialNum(){
     serialNum += String(buf);
   }
   return serialNum;
+}
+
+void reset(){
+  digitalWrite(resetPin, HIGH);
+  delay(1000);
+  digitalWrite(resetPin, LOW);
 }
