@@ -210,6 +210,10 @@ bool cameraInit(){  // Initialize Camera module
 
 
 void snapShot(){
+  if (getLight()<=5){ // 너무 어두우면 촬영하지 않음
+    return;
+  }
+  
   // 카메라 모듈 초기화
   while(false == cameraInit()){
     // Serial.println("camera init error...");
