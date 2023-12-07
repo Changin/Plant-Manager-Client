@@ -273,7 +273,8 @@ void snapShot(){
     }
     contextBuf += "\"}";
 
-    if (bytesToRead<64){
+    // 마지막 전송이면 카운트 0으로 보내기
+    if (jpglen<=64){
       count = 0;
     }
 
@@ -305,7 +306,7 @@ void snapShot(){
         success = 1;
       }
       try_count++;
-      if (try_count>30){
+      if (try_count>50){
         // Critical Error! -> Reboot System
         reset();
       }
