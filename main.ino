@@ -14,10 +14,10 @@
 #ifndef HAVE_HWSERIAL1
 #endif
 SoftwareSerial Serial1(6, 7); // RX, TX 기존 2,3에서 변경함 (카메라랑 겹쳐서)
-// char ssid[] = "AndroidHotspot6638";            // network SSID (name)
-const char ssid[] = "U+NetA67E";
-// char pass[] = "20010894";        // network password
-const char pass[] = "174E3E3AM#";
+const char ssid[] = "Changin";            // network SSID (name)
+// const char ssid[] = "U+NetA67E";
+const char pass[] = "12345678";        // network password
+// const char pass[] = "174E3E3AM#";
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
 const char server[] = "43.200.105.74";  
 // const char server[] = "192.168.123.103";
@@ -35,6 +35,7 @@ VC0706 cam = VC0706(&cameraconnection);
 #define DHT_PIN 4                // DHT11을 4번핀에 연결
 #define DHT_TYPE DHT11           // DHT11로 설정(DHT22등 사용 가능)
 DHT dht(DHT_PIN, DHT_TYPE);      // DHT11 객체 생성
+#define YL_VCC 5                 // 토양수분센서 VCC 핀
 
 
 
@@ -70,6 +71,7 @@ void setup() {
   dht.begin();          // dht 시작
   l1 = 0;
   l3 = 0;
+  pinMode(YL_VCC, OUTPUT); // YL-69 VCC setup
 
   // 2. Connect WiFi
   Serial1.begin(9600);  // initialize serial for ESP module
@@ -80,8 +82,8 @@ void setup() {
     while (true);
   }
   while ( status != WL_CONNECTED) {
-    // Serial.print("connect to WPA SSID: ");
-    // Serial.println(ssid);
+    Serial.print("connect to WPA SSID: ");
+    Serial.println(ssid);
     // Connect to WPA/WPA2 network
     status = WiFi.begin(ssid, pass);
   }
@@ -111,7 +113,7 @@ void setup() {
       client.println("Content-Type: application/json");
       client.println();
       client.println(content);
-      // client.println("POST /api/join/ HTTP/1.1\nHost: 192.168.123.103:8080\nAccept: */*\nContent-Length: "+String(content.length())+"\nContent-Type: application/json\n\n"+content);
+      //client.println("POST /api/join/ HTTP/1.1\nHost: "+String(server)+"\nAccept: */*\nContent-Length: "+String(content.length())+"\nContent-Type: application/json\n\n"+content);
 
       // Parse JSON -> set TIMELAPSE_PERIOD
       delay(100);
@@ -129,7 +131,7 @@ void setup() {
 
             TIMELAPSE_PERIOD = period.toInt();
             // Serial.print("period: ");
-            // Serial.println(TIMELAPSE_PERIOD);
+            Serial.println(TIMELAPSE_PERIOD);
             suc = true;
           }
         }
@@ -187,7 +189,13 @@ float getHumi(){    // 습도 반환
 }
 
 int getWatery(){    // 토양수분 반환
-  return (1023-analogRead(A1))/10;
+  // 5번핀 on VCC 공급 -> analogRead()
+  digitalWrite(YL_VCC, HIGH);
+  short waterval = analogRead(A1);
+  digitalWrite(YL_VCC, LOW);
+  // Serial.print("Watery : ");
+  // Serial.println(waterval);
+  return (1023-waterval)/10;
 }
 
 
@@ -210,7 +218,7 @@ bool cameraInit(){  // Initialize Camera module
 
 
 void snapShot(){
-  if (getLight()<=5){ // 너무 어두우면 촬영하지 않음
+  if (getLight()<4){ // 너무 어두우면 촬영하지 않음
     return;
   }
   
@@ -264,7 +272,7 @@ void snapShot(){
   RingBuffer ringbuf(8);
   int count = 1;
   while(jpglen != 0){
-    uint8_t bytesToRead = min(64, jpglen);  // 64바이트씩 읽기
+    uint8_t bytesToRead = min(64, jpglen);  // 128바이트씩 읽기
     buffer = cam.readPicture(bytesToRead);
     String contextBuf = "{\"plant_id\": \""+getSerialNum()+"\", \"data\": \"";
     //String contextBuf = "{\"plant_id\": \"testSerial1\", \"data\": \"";
