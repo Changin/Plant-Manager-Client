@@ -176,7 +176,8 @@ void loop() {
 
 // **************************Functions***********************************
 int getLight(){     // 조도값 (0~100%) 반환
-  int cdsvalue = analogRead(A3);
+  int cdsvalue = analogRead(A1);
+  // Serial.println(map(cdsvalue, 0, 1023, 100, 0));
   return map(cdsvalue, 0, 1023, 100, 0);
 }
 
@@ -191,7 +192,9 @@ float getHumi(){    // 습도 반환
 int getWatery(){    // 토양수분 반환
   // 5번핀 on VCC 공급 -> analogRead()
   digitalWrite(YL_VCC, HIGH);
-  short waterval = analogRead(A1);
+  delay(100);
+  short waterval = analogRead(A3);
+  delay(100);
   digitalWrite(YL_VCC, LOW);
   // Serial.print("Watery : ");
   // Serial.println(waterval);
